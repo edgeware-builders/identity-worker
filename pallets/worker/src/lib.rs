@@ -48,11 +48,22 @@ pub trait Trait: CreateSignedTransaction<Call<Self>> {
 	type UnsignedPriority: Get<TransactionPriority>;
 }
 
+/// The type of endpoint
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
+pub enum Endpoint {
+	Github,
+	Twitter,
+	Other,
+}
+
 /// A pending identity verification.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct PendingVerification<AccountId> {
-	/// The location of the verification page
+	/// The type of endpoint we're querying for verification
+	endpoint: Endpoint,
+	/// The endpoint for the verification page
 	url: Vec<u8>,
 	/// The account submitting the verification request
 	submitter: AccountId,
@@ -103,6 +114,11 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
+	fn add_to_pending_queue(verification: PendingVerification<T::AccountId>) -> Result<(), &'static str> {
+		PendingVerifications::<T>::mutate(|v| { v.push(verification) });
+		Ok(())
+	}
+
 	fn verify(verification: PendingVerification<T::AccountId>) -> Result<bool, http::Error> {
 		let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
 		let url_str = sp_std::str::from_utf8(&verification.url).map_err(|_| {
@@ -130,8 +146,27 @@ impl<T: Trait> Module<T> {
 		})?;
 		debug::debug!("Got response body: {:?}", body_str);
 
-		// TODO: verify fetched response
-		Ok(true)
+		let result = match verification.endpoint {
+			// plaintext endpoint
+			Endpoint::Other => {
+				// interpret the entire string as a base64 encoded "signature | public key"
+				// allocate a buffer of sufficient size -- signature is 64 bytes, pubkey is 32 bytes
+				let mut buf: [u8; 96] = [0; 96];
+				base64::decode_config_slice(body_str, base64::STANDARD, &mut buf).unwrap();
+
+				// verify pub key matches given account
+				if buf[64..] == verification.target.into() {
+					// verify signature matches (HOW TO?)
+					let public = &buf[64..];
+					let signature = &buf[..64];
+					T::AuthorityId::verify(b"test", public.into(), signature.into())
+				} else {
+					false
+				}
+			},
+			_ => false,
+		};
+		Ok(result)
 	}
 }
 
