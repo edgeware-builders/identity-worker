@@ -5,9 +5,9 @@ use frame_support::{
 	weights::Weight,
 };
 use sp_core::{
-	H256,
+	H256, Pair,
 	offchain::{OffchainExt, testing},
-	sr25519::{Pair, Signature},
+	sr25519::{Signature},
 };
 
 use sp_runtime::{
@@ -117,28 +117,34 @@ fn should_make_http_call_and_parse_result() {
 
 	t.execute_with(|| {
 		// when
-		let alice_pubkey = sp_core::sr25519::Pair::from_string("//Alice", None).unwrap().public();
-		let bob_pubkey = sp_core::sr25519::Pair::from_string("//Bob", None).unwrap().public();
-		Example::add_to_pending_queue(PendingVerification {
+		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
+		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+		let result = Example::verify(PendingVerification {
 			endpoint: Endpoint::Other,
 			url: b"http://localhost:1234".to_vec(),
 			submitter: bob_pubkey,
 			target: alice_pubkey,
-		})
-		let result = Example::verify();
+		});
 		// then
-		assert!(result);
+		assert_eq!(result, Ok(true));
 	});
 }
 
 fn set_block_response(state: &mut testing::OffchainState) {
-	let alice_pubkey = sp_core::sr25519::Pair::from_string("//Alice", None).unwrap().public();
-	// TODO: Marshall alice pubkey into a base64 signature
-	let blob = b"jryGnU7CYzBaG/TCuObf3eSRuc5Qb0ADbIKAL7ZuOCFYKQhKaR+Qzpnzyx6ojfzNvrIPRqRMZ4yd5qum4LawjtQ1k8cV/dMcYRQavQSpn9aCLIVYhUzN45pWhOelbaJ9";
+	let alice = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012");
+	let signature = alice.sign(&alice.public()).0;
+
+	// concat signature and public key
+	let mut buf = Vec::new();
+	buf.extend_from_slice(&signature);
+	buf.extend_from_slice(&alice.public());
+
+	// base64 encode
+	let blob = base64::encode_config(&buf, base64::STANDARD);
 	state.expect_request(testing::PendingRequest {
 		method: "GET".into(),
     uri: "http://localhost:1234".into(),
-		response: Some(blob.to_vec()),
+		response: Some(blob.as_bytes().into_iter().cloned().collect::<Vec<u8>>()),
 		sent: true,
 		..Default::default()
 	});
