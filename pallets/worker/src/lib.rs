@@ -15,6 +15,7 @@ use frame_support::{
 };
 use sp_runtime::{
 	RuntimeDebug,
+	traits::{Hash},
 	transaction_validity::{
 		ValidTransaction, TransactionValidity, TransactionSource,
 		TransactionPriority,
@@ -25,6 +26,9 @@ use sp_runtime::{
 };
 use codec::{Encode, Decode};
 use sp_std::vec::Vec;
+use sp_io::crypto::sr25519_verify;
+use sp_core::sr25519::{Public, Signature};
+use sp_core::crypto::UncheckedFrom;
 
 /// This pallet's configuration trait
 pub trait Trait: CreateSignedTransaction<Call<Self>> {
@@ -108,13 +112,14 @@ decl_module! {
 				Some(v) => v,
 				None => return, // do nothing if no pending verifications
 			};
-			Self::verify(verification);
+			let result = Self::verify(verification);
+			debug::debug!("Result: {:?}", result);
 		}
 	}
 }
 
 impl<T: Trait> Module<T> {
-	fn add_to_pending_queue(verification: PendingVerification<T::AccountId>) -> Result<(), &'static str> {
+	pub fn add_to_pending_queue(verification: PendingVerification<T::AccountId>) -> Result<(), &'static str> {
 		PendingVerifications::<T>::mutate(|v| { v.push(verification) });
 		Ok(())
 	}
@@ -155,11 +160,15 @@ impl<T: Trait> Module<T> {
 				base64::decode_config_slice(body_str, base64::STANDARD, &mut buf).unwrap();
 
 				// verify pub key matches given account
-				if buf[64..] == verification.target.into() {
-					// verify signature matches (HOW TO?)
-					let public = &buf[64..];
-					let signature = &buf[..64];
-					T::AuthorityId::verify(b"test", public.into(), signature.into())
+				if T::Hashing::hash(&buf[64..]) == T::Hashing::hash(&verification.target.encode()) {
+					// verify signature matches
+					let mut pub_bytes: [u8; 32] = [0; 32];
+					pub_bytes.copy_from_slice(&buf[64..]);
+					let public: Public = Public::unchecked_from(pub_bytes);
+					let mut sig_bytes: [u8; 64] = [0; 64];
+					sig_bytes.copy_from_slice(&buf[..64]);
+					let signature = Signature::from_raw(sig_bytes);
+					sr25519_verify(&signature, &public, &public)
 				} else {
 					false
 				}

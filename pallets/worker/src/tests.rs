@@ -132,10 +132,13 @@ fn should_make_http_call_and_parse_result() {
 }
 
 fn set_block_response(state: &mut testing::OffchainState) {
+	let alice_pubkey = sp_core::sr25519::Pair::from_string("//Alice", None).unwrap().public();
+	// TODO: Marshall alice pubkey into a base64 signature
+	let blob = b"jryGnU7CYzBaG/TCuObf3eSRuc5Qb0ADbIKAL7ZuOCFYKQhKaR+Qzpnzyx6ojfzNvrIPRqRMZ4yd5qum4LawjtQ1k8cV/dMcYRQavQSpn9aCLIVYhUzN45pWhOelbaJ9";
 	state.expect_request(testing::PendingRequest {
 		method: "GET".into(),
     uri: "http://localhost:1234".into(),
-		response: Some(b"jryGnU7CYzBaG/TCuObf3eSRuc5Qb0ADbIKAL7ZuOCFYKQhKaR+Qzpnzyx6ojfzNvrIPRqRMZ4yd5qum4LawjtQ1k8cV/dMcYRQavQSpn9aCLIVYhUzN45pWhOelbaJ9".to_vec()),
+		response: Some(blob.to_vec()),
 		sent: true,
 		..Default::default()
 	});
