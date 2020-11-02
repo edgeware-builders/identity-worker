@@ -29,6 +29,7 @@ use sp_std::vec::Vec;
 use sp_io::crypto::sr25519_verify;
 use sp_core::sr25519::{Public, Signature};
 use sp_core::crypto::{KeyTypeId, UncheckedFrom};
+use lite_json::JsonValue;
 
 #[cfg(test)]
 mod tests;
@@ -214,9 +215,44 @@ impl<T: Trait> Module<T> {
 
 		let result = match verification.endpoint {
 			Endpoint::Github => {
-				// TODO: interpret the string as a JSON blob: the base64 string should be found under "response_json.files[filename].content"
-				let content = "";
-				Self::verify(&content, verification.target)
+				// interpret body string as a JSON blob
+				// the base64 string should be found under "response_json.files[filename].content"
+				let data = lite_json::parse_json(&body_str).unwrap();
+
+				// get data["files"][filename]
+				let file_data = match data {
+					JsonValue::Object(obj) => {
+						obj.into_iter()
+							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"files".to_vec())
+							.and_then(|v| {
+								match v.1 {
+									JsonValue::Object(files) => Some(files[0].1.clone()),
+									_ => None,
+								}
+							})
+					},
+					_ => None
+				};
+				
+				// get "content" (base64 string)
+				let content_vec = match file_data {
+					Some(JsonValue::Object(obj)) => {
+						obj.into_iter()
+							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"content".to_vec())
+							.and_then(|v| {
+								match v.1 {
+									JsonValue::String(c) => Some(c),
+									_ => None,
+								}
+							})
+					},
+					_ => None,
+				}.unwrap().into_iter().map(|c| c as u8).collect::<Vec<u8>>();
+				let content_str = sp_std::str::from_utf8(&content_vec).map_err(|_| {
+					debug::warn!("No UTF8 body");
+					http::Error::Unknown
+				})?;
+				Self::verify(&content_str, verification.target)
 			},
 
 			// plaintext endpoint

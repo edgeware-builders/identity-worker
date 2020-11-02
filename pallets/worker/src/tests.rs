@@ -108,12 +108,12 @@ impl Trait for Test {
 type Example = Module<Test>;
 
 #[test]
-fn should_make_http_call_and_parse_result() {
+fn should_make_plaintext_http_call_and_parse_result() {
 	let (offchain, state) = testing::TestOffchainExt::new();
 	let mut t = sp_io::TestExternalities::default();
 	t.register_extension(OffchainExt::new(offchain));
 
-	set_block_response(&mut state.write());
+	set_plaintext_response(&mut state.write());
 
 	t.execute_with(|| {
 		// when
@@ -130,7 +130,47 @@ fn should_make_http_call_and_parse_result() {
 	});
 }
 
-fn set_block_response(state: &mut testing::OffchainState) {
+#[test]
+fn should_make_github_call_and_parse_result() {
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = sp_io::TestExternalities::default();
+	t.register_extension(OffchainExt::new(offchain));
+
+	set_github_response(&mut state.write());
+
+	t.execute_with(|| {
+		// when
+		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
+		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+		let result = Example::process(PendingVerification {
+			endpoint: Endpoint::Github,
+			url: b"https://gist.github.com/jnaviask/dc98586540413418520d661474e8a546".to_vec(),
+			submitter: bob_pubkey,
+			target: alice_pubkey,
+		});
+		// then
+		assert_eq!(result, Ok(true));
+	});
+}
+
+fn set_github_response(state: &mut testing::OffchainState) {
+	let data = br#"{
+		"files": {
+			"filename.key": {
+				"content": "3o4mfx9gZVjp4QDToUhQr5elsGr0M4wKTySjI9kfOx3KNqdxnRYTHiZEQ2vbEoX6e+K+UKeomI4hjbshQWt6gHQcCKBvQcWWYI9ndCWb2QQzBK36XT7qYnYL2b6XY01j"
+			}
+		}
+	}"#.to_vec();
+	state.expect_request(testing::PendingRequest {
+		method: "GET".into(),
+    uri: "https://api.github.com/gists/dc98586540413418520d661474e8a546".into(),
+		response: Some(data),
+		sent: true,
+		..Default::default()
+	});
+}
+
+fn set_plaintext_response(state: &mut testing::OffchainState) {
 	let alice = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012");
 	let signature = alice.sign(&alice.public()).0;
 
