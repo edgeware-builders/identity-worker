@@ -119,7 +119,7 @@ fn should_make_http_call_and_parse_result() {
 		// when
 		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
 		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
-		let result = Example::verify(PendingVerification {
+		let result = Example::process(PendingVerification {
 			endpoint: Endpoint::Other,
 			url: b"http://localhost:1234".to_vec(),
 			submitter: bob_pubkey,
@@ -141,6 +141,7 @@ fn set_block_response(state: &mut testing::OffchainState) {
 
 	// base64 encode
 	let blob = base64::encode_config(&buf, base64::STANDARD);
+	// 3o4mfx9gZVjp4QDToUhQr5elsGr0M4wKTySjI9kfOx3KNqdxnRYTHiZEQ2vbEoX6e+K+UKeomI4hjbshQWt6gHQcCKBvQcWWYI9ndCWb2QQzBK36XT7qYnYL2b6XY01j
 	state.expect_request(testing::PendingRequest {
 		method: "GET".into(),
     uri: "http://localhost:1234".into(),

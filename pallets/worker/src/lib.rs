@@ -133,7 +133,7 @@ decl_module! {
 				Some(v) => v,
 				None => return, // do nothing if no pending verifications
 			};
-			let result = Self::verify(verification);
+			let result = Self::process(verification);
 			debug::debug!("Result: {:?}", result);
 		}
 	}
@@ -145,9 +145,49 @@ impl<T: Trait> Module<T> {
 		Ok(())
 	}
 
-	fn verify(verification: PendingVerification<T::AccountId>) -> Result<bool, http::Error> {
+	fn verify(signature: &str, target: T::AccountId) -> bool {
+		// interpret the entire string as a base64 encoded "signature | public key"
+		// allocate a buffer of sufficient size -- signature is 64 bytes, pubkey is 32 bytes
+		let mut buf: [u8; 96] = [0; 96];
+		base64::decode_config_slice(signature, base64::STANDARD, &mut buf).unwrap();
+
+		// verify pub key matches given account
+		if T::Hashing::hash(&buf[64..]) == T::Hashing::hash(&target.encode()) {
+			// verify signature matches
+			let mut pub_bytes: [u8; 32] = [0; 32];
+			pub_bytes.copy_from_slice(&buf[64..]);
+			let public: Public = Public::unchecked_from(pub_bytes);
+			let mut sig_bytes: [u8; 64] = [0; 64];
+			sig_bytes.copy_from_slice(&buf[..64]);
+			let signature = Signature::from_raw(sig_bytes);
+			sr25519_verify(&signature, &public, &public)
+		} else {
+			false
+		}
+	} 
+
+	fn process(verification: PendingVerification<T::AccountId>) -> Result<bool, http::Error> {
 		let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
-		let url_str = sp_std::str::from_utf8(&verification.url).map_err(|_| {
+		let provided_url_str = sp_std::str::from_utf8(&verification.url).map_err(|_| {
+			debug::warn!("No UTF8 url");
+			http::Error::Unknown
+		})?;
+		// TODO: Twitter
+		let url_vec = match verification.endpoint {
+			// for github, use the gist's common URL to construct an API query
+			Endpoint::Github => {
+				// retrieve the id string and construct the API call
+				let gist_id = provided_url_str.split('/').last().unwrap().as_bytes();
+				let gist_api_prefix = b"https://api.github.com/gists/";
+				let mut gist_url = Vec::new();
+				gist_url.extend(gist_api_prefix);
+				gist_url.extend(gist_id);
+				gist_url
+			}
+			// plaintext URLs require no modification
+			_ => provided_url_str.as_bytes().to_vec(),
+		};
+		let url_str = sp_std::str::from_utf8(&url_vec).map_err(|_| {
 			debug::warn!("No UTF8 url");
 			http::Error::Unknown
 		})?;
@@ -173,27 +213,14 @@ impl<T: Trait> Module<T> {
 		debug::debug!("Got response body: {:?}", body_str);
 
 		let result = match verification.endpoint {
-			// plaintext endpoint
-			Endpoint::Other => {
-				// interpret the entire string as a base64 encoded "signature | public key"
-				// allocate a buffer of sufficient size -- signature is 64 bytes, pubkey is 32 bytes
-				let mut buf: [u8; 96] = [0; 96];
-				base64::decode_config_slice(body_str, base64::STANDARD, &mut buf).unwrap();
-
-				// verify pub key matches given account
-				if T::Hashing::hash(&buf[64..]) == T::Hashing::hash(&verification.target.encode()) {
-					// verify signature matches
-					let mut pub_bytes: [u8; 32] = [0; 32];
-					pub_bytes.copy_from_slice(&buf[64..]);
-					let public: Public = Public::unchecked_from(pub_bytes);
-					let mut sig_bytes: [u8; 64] = [0; 64];
-					sig_bytes.copy_from_slice(&buf[..64]);
-					let signature = Signature::from_raw(sig_bytes);
-					sr25519_verify(&signature, &public, &public)
-				} else {
-					false
-				}
+			Endpoint::Github => {
+				// TODO: interpret the string as a JSON blob: the base64 string should be found under "response_json.files[filename].content"
+				let content = "";
+				Self::verify(&content, verification.target)
 			},
+
+			// plaintext endpoint
+			Endpoint::Other => Self::verify(&body_str, verification.target),
 			_ => false,
 		};
 		Ok(result)
