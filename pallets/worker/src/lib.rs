@@ -207,7 +207,6 @@ impl<T: Trait> Module<T> {
 		let pending = if verification.endpoint == Endpoint::Twitter {
 			let s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
 			let s_value = s_info.get::<Vec<u8>>();
-			println!("{:?}", s_value);
 			if let Some(Some(twitter_key)) = s_value {
 				// add "Bearer" prefix to key
 				let mut authorization = Vec::new();
