@@ -156,11 +156,9 @@ fn should_make_github_call_and_parse_result() {
 
 #[test]
 fn should_not_make_twitter_call_without_api_key() {
-	let (offchain, state) = testing::TestOffchainExt::new();
+	let (offchain, _state) = testing::TestOffchainExt::new();
 	let mut t = sp_io::TestExternalities::default();
 	t.register_extension(OffchainExt::new(offchain));
-
-	set_twitter_response(&mut state.write());
 
 	t.execute_with(|| {
 		let mut s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
@@ -213,7 +211,7 @@ fn set_twitter_response(state: &mut testing::OffchainState) {
 	let data = br#"{
 		"data": {
 			"id": "1050118621198921728",
-			"text": "@testtestajlashdghwetiwjeijwtest 3o4mfx9gZVjp4QDToUhQr5elsGr0M4wKTySjI9kfOx3KNqdxnRYTHiZEQ2vbEoX6e+K+UKeomI4hjbshQWt6gHQcCKBvQcWWYI9ndCWb2QQzBK36XT7qYnYL2b6XY01j",
+			"text": "@testtestajlashdghwetiwjeijwtest 3o4mfx9gZVjp4QDToUhQr5elsGr0M4wKTySjI9kfOx3KNqdxnRYTHiZEQ2vbEoX6e+K+UKeomI4hjbshQWt6gHQcCKBvQcWWYI9ndCWb2QQzBK36XT7qYnYL2b6XY01j"
 		}
 	}"#.to_vec();
 	let mut headers = Vec::new();

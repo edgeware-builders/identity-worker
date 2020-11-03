@@ -253,21 +253,35 @@ impl<T: Trait> Module<T> {
 			Endpoint::Twitter => {
 				// interpret body string as a JSON blob
 				// the base64 string should be found under "response_json.text" after the @handle
-				let data = lite_json::parse_json(&body_str).unwrap();
+				let response_json = lite_json::parse_json(&body_str).unwrap();
 
 				// get data["text"] as Vec<u8>
-				let text = match data {
+				let data = match response_json {
 					JsonValue::Object(obj) => {
 						obj.into_iter()
-							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"text".to_vec())
+							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"data".to_vec())
 							.and_then(|v| {
 								match v.1 {
-									JsonValue::String(text) => Some(text),
+									JsonValue::Object(obj) => Some(obj),
 									_ => None,
 								}
 							})
 					},
 					_ => None
+				};
+
+				let text = match data {
+					Some(obj) => {
+						obj.into_iter()
+							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"text".to_vec())
+							.and_then(|v| {
+								match v.1 {
+									JsonValue::String(t) => Some(t),
+									_ => None,
+								}
+							})
+					},
+					_ => None,
 				}.unwrap().into_iter().map(|c| c as u8).collect::<Vec<u8>>();
 
 				// parse out base64 string: should be the second/last str if split on whitespace
