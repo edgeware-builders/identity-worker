@@ -21,6 +21,7 @@ use sp_runtime::{
 		TransactionPriority,
 	},
 	offchain::{
+		storage::StorageValueRef,
 		http, Duration
 	}
 };
@@ -169,22 +170,28 @@ impl<T: Trait> Module<T> {
 
 	fn process(verification: PendingVerification<T::AccountId>) -> Result<bool, http::Error> {
 		let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
+
+		// prepare the URL for the worker to query
 		let provided_url_str = sp_std::str::from_utf8(&verification.url).map_err(|_| {
 			debug::warn!("No UTF8 url");
 			http::Error::Unknown
 		})?;
-		// TODO: Twitter
+
+		// for github and twitter, parse the id from the url to construct an API query
+		fn reformat_id_for_api(prefix: Vec<u8>, provided_url: &str) -> Vec<u8> {
+			// slice at the last trailing '/' to generate the id
+			let id = provided_url.split('/').last().unwrap().as_bytes();
+
+			// append the id to the prefix api endpoint
+			let mut url = Vec::new();
+			url.extend(prefix);
+			url.extend(id);
+			url
+		}
+
 		let url_vec = match verification.endpoint {
-			// for github, use the gist's common URL to construct an API query
-			Endpoint::Github => {
-				// retrieve the id string and construct the API call
-				let gist_id = provided_url_str.split('/').last().unwrap().as_bytes();
-				let gist_api_prefix = b"https://api.github.com/gists/";
-				let mut gist_url = Vec::new();
-				gist_url.extend(gist_api_prefix);
-				gist_url.extend(gist_id);
-				gist_url
-			}
+			Endpoint::Github => reformat_id_for_api(b"https://api.github.com/gists/".to_vec(), provided_url_str),
+			Endpoint::Twitter => reformat_id_for_api(b"https://api.twitter.com/2/tweets/".to_vec(), provided_url_str),
 			// plaintext URLs require no modification
 			_ => provided_url_str.as_bytes().to_vec(),
 		};
@@ -192,20 +199,48 @@ impl<T: Trait> Module<T> {
 			debug::warn!("No UTF8 url");
 			http::Error::Unknown
 		})?;
-		let request = http::Request::get(url_str);
-		// TODO: set headers, oauth stuff
-		let pending = request
-			.deadline(deadline)
-			.send()
-			.map_err(|_| http::Error::IoError)?;
 
+		// prepare request to API endpoint
+		let request = http::Request::get(url_str);
+
+		// if on Twitter, fetch an API key from storage and build header
+		let pending = if verification.endpoint == Endpoint::Twitter {
+			let s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
+			let s_value = s_info.get::<Vec<u8>>();
+			if let Some(Some(twitter_key)) = s_value {
+				// add "Bearer" prefix to key
+				let mut authorization = Vec::new();
+				authorization.extend(b"Bearer ");
+				authorization.extend(twitter_key);
+
+				// convert to str and add as header to pending request
+				let authorization_str = sp_std::str::from_utf8(&authorization).map_err(|_| {
+					debug::warn!("No UTF8 url");
+					http::Error::Unknown
+				})?;
+				request
+					.add_header("Authorization", authorization_str)
+					.deadline(deadline)
+					.send().map_err(|_| http::Error::IoError)?
+			} else {
+				// fail if no twitter token found
+				// TODO: set specific error here
+				return Err(http::Error::Unknown);
+			}
+		} else {
+			request
+				.deadline(deadline)
+				.send().map_err(|_| http::Error::IoError)?
+		};
+
+		// send the request and wait for response
 		let response = pending.try_wait(deadline).map_err(|_| http::Error::DeadlineReached)??;
 		if response.code != 200 {
 			debug::warn!("Unexpected status code: {}", response.code);
 			return Err(http::Error::Unknown);
 		}
 
-		// Collect body and create a str slice.
+		// Collect response body and parse/verify the signature text
 		let body = response.body().collect::<Vec<u8>>();
 		let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
 			debug::warn!("No UTF8 body");
@@ -214,6 +249,35 @@ impl<T: Trait> Module<T> {
 		debug::debug!("Got response body: {:?}", body_str);
 
 		let result = match verification.endpoint {
+			Endpoint::Twitter => {
+				// interpret body string as a JSON blob
+				// the base64 string should be found under "response_json.text" after the @handle
+				let data = lite_json::parse_json(&body_str).unwrap();
+
+				// get data["text"] as Vec<u8>
+				let text = match data {
+					JsonValue::Object(obj) => {
+						obj.into_iter()
+							.find(|(k, _)| k.iter().map(|c| *c as u8).collect::<Vec<u8>>() == b"text".to_vec())
+							.and_then(|v| {
+								match v.1 {
+									JsonValue::String(text) => Some(text),
+									_ => None,
+								}
+							})
+					},
+					_ => None
+				}.unwrap().into_iter().map(|c| c as u8).collect::<Vec<u8>>();
+
+				// parse out base64 string: should be the second/last str if split on whitespace
+				let text_str = sp_std::str::from_utf8(&text).map_err(|_| {
+					debug::warn!("No UTF8 text");
+					http::Error::Unknown
+				})?;
+				let base64_str = text_str.split_whitespace().last().unwrap();
+				Self::verify(&base64_str, verification.target)
+			},
+
 			Endpoint::Github => {
 				// interpret body string as a JSON blob
 				// the base64 string should be found under "response_json.files[filename].content"
@@ -257,7 +321,6 @@ impl<T: Trait> Module<T> {
 
 			// plaintext endpoint
 			Endpoint::Other => Self::verify(&body_str, verification.target),
-			_ => false,
 		};
 		Ok(result)
 	}

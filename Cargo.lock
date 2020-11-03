@@ -2999,9 +2999,9 @@ dependencies = [
 
 [[package]]
 name = "lite-json"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c73e713a23ac6e12074c9e96ef2dfb770921e0cb9244c093bd38424209e0e523"
+checksum = "0460d985423a026b4d9b828a7c6eed1bcf606f476322f3f9b507529686a61715"
 dependencies = [
  "lite-parser",
 ]

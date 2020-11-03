@@ -13,6 +13,7 @@ use sp_core::{
 use sp_runtime::{
 	Perbill,
 	testing::{Header, TestXt},
+	offchain::http,
 	traits::{
 		BlakeTwo256, IdentityLookup, Extrinsic as ExtrinsicT,
 		IdentifyAccount, Verify,
@@ -150,6 +151,80 @@ fn should_make_github_call_and_parse_result() {
 		});
 		// then
 		assert_eq!(result, Ok(true));
+	});
+}
+
+#[test]
+fn should_not_make_twitter_call_without_api_key() {
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = sp_io::TestExternalities::default();
+	t.register_extension(OffchainExt::new(offchain));
+
+	set_twitter_response(&mut state.write());
+
+	t.execute_with(|| {
+		let mut s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
+		s_info.clear();
+	
+		// when
+		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
+		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+		let result = Example::process(PendingVerification {
+			endpoint: Endpoint::Twitter,
+			url: b"https://twitter.com/JakeNaviasky/status/1323654504550604802".to_vec(),
+			submitter: bob_pubkey,
+			target: alice_pubkey,
+		});
+		// then
+		// TODO: make specific error for API key
+		assert_eq!(result, Err(http::Error::Unknown));
+	});
+}
+
+#[test]
+fn should_make_twitter_call_and_parse_result() {
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = sp_io::TestExternalities::default();
+	t.register_extension(OffchainExt::new(offchain));
+
+	set_twitter_response(&mut state.write());
+
+	t.execute_with(|| {
+		// set twitter API key in storage
+		let api_key = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+		let s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
+		s_info.set(api_key);
+	
+		// when
+		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
+		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+		let result = Example::process(PendingVerification {
+			endpoint: Endpoint::Twitter,
+			url: b"https://twitter.com/JakeNaviasky/status/1323654504550604802".to_vec(),
+			submitter: bob_pubkey,
+			target: alice_pubkey,
+		});
+		// then
+		assert_eq!(result, Ok(true));
+	});
+}
+
+fn set_twitter_response(state: &mut testing::OffchainState) {
+	let data = br#"{
+		"data": {
+			"id": "1050118621198921728",
+			"text": "@testtestajlashdghwetiwjeijwtest 3o4mfx9gZVjp4QDToUhQr5elsGr0M4wKTySjI9kfOx3KNqdxnRYTHiZEQ2vbEoX6e+K+UKeomI4hjbshQWt6gHQcCKBvQcWWYI9ndCWb2QQzBK36XT7qYnYL2b6XY01j",
+		}
+	}"#.to_vec();
+	let mut headers = Vec::new();
+	headers.push((String::from("Authorization"), String::from("Bearer AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")));
+	state.expect_request(testing::PendingRequest {
+		method: "GET".into(),
+		uri: "https://api.twitter.com/2/tweets/1323654504550604802".into(),
+		response: Some(data),
+		sent: true,
+		headers: headers,
+		..Default::default()
 	});
 }
 
