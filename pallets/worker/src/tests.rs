@@ -143,6 +143,7 @@ fn should_make_github_call_and_parse_result() {
 		// when
 		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
 		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+
 		let result = Example::process(PendingVerification {
 			endpoint: Endpoint::Github,
 			url: b"https://gist.github.com/jnaviask/dc98586540413418520d661474e8a546".to_vec(),
