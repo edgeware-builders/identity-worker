@@ -4,13 +4,14 @@
 use serde::{Serialize, Deserialize};
 
 use frame_system::{
-	self as system,
+	self as system, ensure_signed,
 	offchain::{
 		AppCrypto, CreateSignedTransaction,
 	}
 };
 use frame_support::{
 	debug, decl_module, decl_storage, decl_event,
+	dispatch::DispatchResult,
 	traits::Get,
 };
 use sp_runtime::{
@@ -135,8 +136,26 @@ decl_module! {
 				Some(v) => v,
 				None => return, // do nothing if no pending verifications
 			};
+			let target = verification.target.clone();
 			let result = Self::process(verification);
 			debug::debug!("Result: {:?}", result);
+			if let Ok(valid) = result {
+				Self::deposit_event(RawEvent::VerificationProcessed(target, valid));
+			}
+		}
+
+		#[weight = 0]
+		pub fn create_pending(origin, target: T::AccountId, endpoint_type: Endpoint, url: Vec<u8>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+			Self::add_to_pending_queue(
+				PendingVerification {
+					endpoint: endpoint_type,
+					url: url,
+					submitter: sender,
+					target: target,
+				}
+			)?;
+			Ok(())
 		}
 	}
 }
