@@ -43,7 +43,7 @@ async function main() {
 
   // seed submitter with funds
   const alice = new Keyring({ type: 'sr25519' }).addFromUri('//Alice');
-  const balanceTxHash = api.tx.balances.transfer(submitter, 12345).signAndSend(alice);
+  const balanceTxHash = await api.tx.balances.transfer(submitter, 12345).signAndSend(alice);
   console.log(balanceTxHash);
 
   // kick off event listener
