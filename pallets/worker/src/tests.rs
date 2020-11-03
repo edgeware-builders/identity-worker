@@ -191,9 +191,9 @@ fn should_make_twitter_call_and_parse_result() {
 
 	t.execute_with(|| {
 		// set twitter API key in storage
-		let api_key = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+		let api_key: Vec<u8> = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_vec();
 		let s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
-		s_info.set(api_key);
+		s_info.set(&api_key);
 	
 		// when
 		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();

@@ -207,11 +207,12 @@ impl<T: Trait> Module<T> {
 		let pending = if verification.endpoint == Endpoint::Twitter {
 			let s_info = StorageValueRef::persistent(b"identity-worker::twitter-token");
 			let s_value = s_info.get::<Vec<u8>>();
+			println!("{:?}", s_value);
 			if let Some(Some(twitter_key)) = s_value {
 				// add "Bearer" prefix to key
 				let mut authorization = Vec::new();
 				authorization.extend(b"Bearer ");
-				authorization.extend(twitter_key);
+				authorization.extend(&twitter_key);
 
 				// convert to str and add as header to pending request
 				let authorization_str = sp_std::str::from_utf8(&authorization).map_err(|_| {
