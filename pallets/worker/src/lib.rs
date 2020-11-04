@@ -254,14 +254,24 @@ impl<T: Trait> Module<T> {
 			}
 		} else {
 			request
+				.add_header("User-Agent", "request")
 				.deadline(deadline)
 				.send().map_err(|_| http::Error::IoError)?
 		};
 
 		// send the request and wait for response
-		let response = pending.try_wait(deadline).map_err(|_| http::Error::DeadlineReached)??;
+		let response = pending.try_wait(deadline).map_err(|_| {
+			debug::warn!("Request error / deadline reached");
+			http::Error::DeadlineReached
+		})??;
 		if response.code != 200 {
 			debug::warn!("Unexpected status code: {}", response.code);
+			let body = response.body().collect::<Vec<u8>>();
+			let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
+				debug::warn!("No UTF8 body");
+				http::Error::Unknown
+			})?;
+			debug::warn!("Error text: {:?}", body_str);
 			return Err(http::Error::Unknown);
 		}
 
