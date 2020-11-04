@@ -165,13 +165,14 @@ impl<T: Trait> Module<T> {
 		};
 		let target = verification.target.clone();
 		let result = Self::process(verification);
-		debug::debug!("Result: {:?}", result);
+		debug::info!("Result: {:?}", result);
 		if let Ok(valid) = result {
 			Self::deposit_event(RawEvent::VerificationProcessed(target, valid));
 		}
 	}
 
 	fn verify(signature: &str, target: T::AccountId) -> bool {
+		debug::native::info!("Verifying signature: {:?} from {:?}", signature, target);
 		// interpret the entire string as a base64 encoded "signature | public key"
 		// allocate a buffer of sufficient size -- signature is 64 bytes, pubkey is 32 bytes
 		let mut buf: [u8; 96] = [0; 96];
@@ -281,7 +282,7 @@ impl<T: Trait> Module<T> {
 			debug::warn!("No UTF8 body");
 			http::Error::Unknown
 		})?;
-		debug::debug!("Got response body: {:?}", body_str);
+		debug::info!("Got response body: {:?}", body_str);
 
 		let result = match verification.endpoint {
 			Endpoint::Twitter => {
