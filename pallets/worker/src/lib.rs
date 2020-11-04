@@ -129,19 +129,9 @@ decl_module! {
 			// We can easily import `frame_system` and retrieve a block hash of the parent block.
 			let parent_hash = <system::Module<T>>::block_hash(block_number - 1.into());
 			debug::debug!("Current block: {:?} (parent hash: {:?})", block_number, parent_hash);
-
-			// Grab the next item off the pending verifications queue
-			let verification_opt = PendingVerifications::<T>::mutate(|v| { v.pop() });
-			let verification = match verification_opt {
-				Some(v) => v,
-				None => return, // do nothing if no pending verifications
-			};
-			let target = verification.target.clone();
-			let result = Self::process(verification);
-			debug::debug!("Result: {:?}", result);
-			if let Ok(valid) = result {
-				Self::deposit_event(RawEvent::VerificationProcessed(target, valid));
-			}
+			
+			// execute verification
+			Self::verify_next();
 		}
 
 		#[weight = 0]
@@ -164,6 +154,21 @@ impl<T: Trait> Module<T> {
 	pub fn add_to_pending_queue(verification: PendingVerification<T::AccountId>) -> Result<(), &'static str> {
 		PendingVerifications::<T>::mutate(|v| { v.push(verification) });
 		Ok(())
+	}
+
+	fn verify_next() {
+		// Grab the next item off the pending verifications queue
+		let verification_opt = PendingVerifications::<T>::mutate(|v| { v.pop() });
+		let verification = match verification_opt {
+			Some(v) => v,
+			None => return, // do nothing if no pending verifications
+		};
+		let target = verification.target.clone();
+		let result = Self::process(verification);
+		debug::debug!("Result: {:?}", result);
+		if let Ok(valid) = result {
+			Self::deposit_event(RawEvent::VerificationProcessed(target, valid));
+		}
 	}
 
 	fn verify(signature: &str, target: T::AccountId) -> bool {
@@ -220,6 +225,7 @@ impl<T: Trait> Module<T> {
 		})?;
 
 		// prepare request to API endpoint
+		debug::native::info!("Querying URL: {:?}", url_str);
 		let request = http::Request::get(url_str);
 
 		// if on Twitter, fetch an API key from storage and build header

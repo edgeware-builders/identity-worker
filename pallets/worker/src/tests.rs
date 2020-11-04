@@ -109,6 +109,29 @@ impl Trait for Test {
 type Example = Module<Test>;
 
 #[test]
+fn should_pop_pending_off_queue_and_process_successfully() {
+	let (offchain, state) = testing::TestOffchainExt::new();
+	let mut t = sp_io::TestExternalities::default();
+	t.register_extension(OffchainExt::new(offchain));
+
+	set_plaintext_response(&mut state.write());
+
+	t.execute_with(|| {
+		let alice_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789012").public();
+		let bob_pubkey = sp_core::sr25519::Pair::from_seed(b"12345678901234567890123456789013").public();
+		let result = Example::create_pending(Origin::signed(bob_pubkey), alice_pubkey, Endpoint::Other, b"http://localhost:1234".to_vec());
+		assert_eq!(result, Ok(()));
+		assert_eq!(Example::pending_verifications().len(), 1);
+
+		// when
+		Example::verify_next();
+
+		// then
+		assert_eq!(Example::pending_verifications().len(), 0);
+	});
+}
+
+#[test]
 fn should_make_plaintext_http_call_and_parse_result() {
 	let (offchain, state) = testing::TestOffchainExt::new();
 	let mut t = sp_io::TestExternalities::default();

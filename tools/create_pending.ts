@@ -2,6 +2,8 @@ import { WsProvider, ApiPromise } from '@polkadot/api';
 import { TypeRegistry } from '@polkadot/types';
 import { Keyring } from '@polkadot/keyring';
 import { Header, Extrinsic } from '@polkadot/types/interfaces';
+import { SubmittableExtrinsic } from '@polkadot/api/types';
+import { KeyringPair } from '@polkadot/keyring/types';
 
 async function initApi() {
   const provider = new WsProvider('ws://localhost:9944');
@@ -24,7 +26,9 @@ async function initApi() {
         'url': 'Vec<u8>',
         'submitter': 'AccountId',
         'target': 'AccountId',
-      }
+      },
+      Address: 'LookupSource',
+      LookupSource: 'GenericLookupSource',
     }
   });
   return api.isReady;
@@ -43,8 +47,21 @@ async function main() {
 
   // seed submitter with funds
   const alice = new Keyring({ type: 'sr25519' }).addFromUri('//Alice');
-  const balanceTxHash = await api.tx.balances.transfer(submitter, 12345).signAndSend(alice);
-  console.log(balanceTxHash);
+  const waitTx = (tx: SubmittableExtrinsic<'promise'>, pair: KeyringPair) => {
+    return new Promise((resolve, reject) => {
+      tx.signAndSend(pair, (result) => {
+        console.log('TX status: ' + result.status.toString());
+        if (result.status.isReady || result.status.isFuture || result.status.isBroadcast) {
+          return;
+        } else if (result.status.isInBlock) {
+          resolve();
+        } else {
+          reject();
+        }
+      });
+    })
+  };
+  await waitTx(api.tx.balances.transfer(submitter, 1000000000), alice);
 
   // kick off event listener
   const subscription = await api.query.system.events((events) => {
@@ -72,7 +89,9 @@ async function main() {
   });
 
   // send transaction for verification
-  const hash = await api.tx.worker.create_pending(target, 'Twitter', url).signAndSend(submitterPair);
+  const balance = await api.query.system.account(submitter);
+  console.log(`Balance: ${balance.toString()}.`);
+  await waitTx(api.tx.worker.createPending(target, 'Twitter', url), submitterPair);
 }
 
 main().then(() => {
