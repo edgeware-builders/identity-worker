@@ -158,6 +158,7 @@ impl<T: Trait> Module<T> {
 
 	fn verify_next() {
 		// Grab the next item off the pending verifications queue
+		// TODO: WHY DOESN'T THIS MUTATE THE VEC IN STORAGE? WE KEEP RE-QUERYING EVERY BLOCK
 		let verification_opt = PendingVerifications::<T>::mutate(|v| { v.pop() });
 		let verification = match verification_opt {
 			Some(v) => v,
